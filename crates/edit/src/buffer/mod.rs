@@ -2462,7 +2462,7 @@ impl TextBuffer {
 
     /// Extracts the contents of the current selection.
     /// May optionally delete it, if requested. This is meant to be used for Ctrl+X.
-    fn extract_selection(&mut self, delete: bool) -> Vec<u8> {
+    pub fn extract_selection(&mut self, delete: bool) -> Vec<u8> {
         let line_copy = !self.has_selection();
         let Some((beg, end)) = self.selection_range_internal(true) else {
             return Vec::new();

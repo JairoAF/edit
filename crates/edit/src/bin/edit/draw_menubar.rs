@@ -8,6 +8,7 @@ use stdext::arena_format;
 
 use crate::localization::*;
 use crate::state::*;
+use crate::toggle_ai_chat_with_selection;
 
 pub fn draw_menubar(ctx: &mut Context, state: &mut State) {
     ctx.menubar_begin();
@@ -104,22 +105,33 @@ fn draw_menu_edit(ctx: &mut Context, state: &mut State) {
 
 fn draw_menu_view(ctx: &mut Context, state: &mut State) {
     if let Some(doc) = state.documents.active() {
-        let mut tb = doc.buffer.borrow_mut();
-        let word_wrap = tb.is_word_wrap_enabled();
+        let mut ai_chat_clicked = false;
+        let word_wrap;
+        {
+            let mut tb = doc.buffer.borrow_mut();
+            word_wrap = tb.is_word_wrap_enabled();
 
-        // All values on the statusbar are currently document specific.
-        if ctx.menubar_menu_button(loc(LocId::ViewFocusStatusbar), 'S', vk::NULL) {
-            state.wants_statusbar_focus = true;
+            // All values on the statusbar are currently document specific.
+            if ctx.menubar_menu_button(loc(LocId::ViewFocusStatusbar), 'S', vk::NULL) {
+                state.wants_statusbar_focus = true;
+            }
+            if ctx.menubar_menu_button(loc(LocId::ViewGoToFile), 'F', kbmod::CTRL | vk::P) {
+                state.wants_go_to_file = true;
+            }
+            if ctx.menubar_menu_button("AI Chat", 'I', kbmod::ALT | vk::I) {
+                ai_chat_clicked = true;
+            }
+            if ctx.menubar_menu_button(loc(LocId::FileGoto), 'G', kbmod::CTRL | vk::G) {
+                state.wants_goto = true;
+            }
+            if ctx.menubar_menu_checkbox(loc(LocId::ViewWordWrap), 'W', kbmod::ALT | vk::Z, word_wrap) {
+                tb.set_word_wrap(!word_wrap);
+                ctx.needs_rerender();
+            }
         }
-        if ctx.menubar_menu_button(loc(LocId::ViewGoToFile), 'F', kbmod::CTRL | vk::P) {
-            state.wants_go_to_file = true;
-        }
-        if ctx.menubar_menu_button(loc(LocId::FileGoto), 'G', kbmod::CTRL | vk::G) {
-            state.wants_goto = true;
-        }
-        if ctx.menubar_menu_checkbox(loc(LocId::ViewWordWrap), 'W', kbmod::ALT | vk::Z, word_wrap) {
-            tb.set_word_wrap(!word_wrap);
-            ctx.needs_rerender();
+
+        if ai_chat_clicked {
+            toggle_ai_chat_with_selection(state);
         }
     }
 

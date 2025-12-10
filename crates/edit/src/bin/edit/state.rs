@@ -14,6 +14,7 @@ use edit::{apperr, buffer, icu, sys};
 
 use crate::documents::DocumentManager;
 use crate::localization::*;
+use crate::ai::Message;
 
 #[repr(transparent)]
 pub struct FormatApperr(apperr::Error);
@@ -172,6 +173,14 @@ pub struct State {
     pub osc_clipboard_sync: bool,
     pub osc_clipboard_always_send: bool,
     pub exit: bool,
+
+    pub wants_ai_chat: bool,
+    pub ai_messages: Vec<Message>,
+    pub ai_input: String,
+    pub ai_selection_preview: String,
+    pub ai_pending: bool,
+    pub ai_focus: bool,
+    pub ai_response_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
 }
 
 impl State {
@@ -220,6 +229,14 @@ impl State {
             osc_clipboard_sync: false,
             osc_clipboard_always_send: false,
             exit: false,
+
+            wants_ai_chat: false,
+            ai_messages: Vec::new(),
+            ai_input: String::new(),
+            ai_selection_preview: String::new(),
+            ai_pending: false,
+            ai_focus: false,
+            ai_response_rx: None,
         })
     }
 }

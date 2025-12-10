@@ -10,6 +10,7 @@ mod draw_menubar;
 mod draw_statusbar;
 mod localization;
 mod state;
+mod ai;
 
 use std::borrow::Cow;
 #[cfg(feature = "debug-latency")]
@@ -22,6 +23,7 @@ use draw_editor::*;
 use draw_filepicker::*;
 use draw_menubar::*;
 use draw_statusbar::*;
+use edit::buffer::TextBuffer;
 use edit::framebuffer::{self, IndexedColor};
 use edit::helpers::{CoordType, KIBI, MEBI, MetricFormatter, Rect, Size};
 use edit::input::{self, kbmod, vk};
@@ -305,6 +307,7 @@ fn draw(ctx: &mut Context, state: &mut State) {
     draw_menubar(ctx, state);
     draw_editor(ctx, state);
     draw_statusbar(ctx, state);
+    draw_ai_chat(ctx, state);
 
     if state.wants_close {
         draw_handle_wants_close(ctx, state);
@@ -342,6 +345,8 @@ fn draw(ctx: &mut Context, state: &mut State) {
 
         if key == kbmod::CTRL | vk::N {
             draw_add_untitled_document(ctx, state);
+        } else if key == kbmod::ALT | vk::I {
+            toggle_ai_chat_with_selection(state);
         } else if key == kbmod::CTRL | vk::O {
             state.wants_file_picker = StateFilePicker::Open;
         } else if key == kbmod::CTRL | vk::S {
@@ -374,6 +379,47 @@ fn draw(ctx: &mut Context, state: &mut State) {
         ctx.needs_rerender();
         ctx.set_input_consumed();
     }
+}
+
+fn selected_text_from_buffer(tb: &mut TextBuffer) -> Option<String> {
+    let selection = tb
+        .extract_user_selection(false)
+        .or_else(|| tb.has_selection().then(|| tb.extract_selection(false)));
+
+    if let Some(bytes) = selection {
+        if bytes.is_empty() {
+            return None;
+        }
+        let text = String::from_utf8_lossy_owned(bytes);
+        if text.is_empty() {
+            return None;
+        }
+        return Some(text);
+    }
+
+    None
+}
+
+pub(crate) fn selected_text_from_active(state: &mut State) -> Option<String> {
+    if let Some(doc) = state.documents.active_mut() {
+        let mut tb = doc.buffer.borrow_mut();
+        return selected_text_from_buffer(&mut tb);
+    }
+    None
+}
+
+pub(crate) fn toggle_ai_chat_with_selection(state: &mut State) {
+    let selection = selected_text_from_active(state);
+    state.wants_ai_chat = !state.wants_ai_chat;
+
+    if !state.wants_ai_chat {
+        state.ai_selection_preview.clear();
+        return;
+    }
+
+    state.ai_focus = true;
+    state.ai_input.clear();
+    state.ai_selection_preview = selection.unwrap_or_default();
 }
 
 fn draw_handle_wants_exit(_ctx: &mut Context, state: &mut State) {

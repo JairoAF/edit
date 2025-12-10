@@ -9,8 +9,10 @@ use edit::icu;
 use edit::input::{kbmod, vk};
 use edit::tui::*;
 
+use crate::selected_text_from_active;
 use crate::localization::*;
 use crate::state::*;
+use crate::ai;
 
 pub fn draw_editor(ctx: &mut Context, state: &mut State) {
     if !matches!(state.wants_search.kind, StateSearchKind::Hidden | StateSearchKind::Disabled) {
@@ -354,4 +356,120 @@ fn validate_goto_point(line: &str) -> Result<Point, ParseIntError> {
         coords[i] = s.parse::<CoordType>()?.saturating_sub(1);
     }
     Ok(Point { x: coords[0], y: coords[1] })
+}
+
+pub fn draw_ai_chat(ctx: &mut Context, state: &mut State) {
+    if !state.wants_ai_chat {
+        return;
+    }
+
+    let preview_lines = state.ai_selection_preview.lines().count().max(1).min(100);
+    let max_modal_height: CoordType = 40;
+    let scroll_height: CoordType = (max_modal_height - 6).max(8); // leave room for prompt + close
+
+    // If we just opened the chat, try to capture the current selection for context.
+    if state.ai_focus && state.ai_selection_preview.is_empty() {
+        if let Some(text) = selected_text_from_active(state) {
+            state.ai_selection_preview = text;
+        }
+    }
+
+    // Check for responses
+    if let Some(rx) = &state.ai_response_rx {
+        if let Ok(result) = rx.try_recv() {
+            state.ai_pending = false;
+            state.ai_response_rx = None;
+            match result {
+                Ok(content) => {
+                    state.ai_messages.push(ai::Message { role: "assistant".to_string(), content });
+                }
+                Err(err) => {
+                    state.ai_messages.push(ai::Message { role: "system".to_string(), content: format!("Error: {}", err) });
+                }
+            }
+            ctx.needs_rerender();
+        }
+    }
+
+    ctx.modal_begin("ai_chat", "AI Chat");
+    ctx.attr_intrinsic_size(Size { width: 80, height: max_modal_height });
+
+    if ctx.contains_focus() && ctx.consume_shortcut(vk::ESCAPE) {
+        state.wants_ai_chat = false;
+    }
+
+    // Scrollable area for selection preview + history.
+    ctx.scrollarea_begin("ai_chat_scroll", Size { width: COORD_TYPE_SAFE_MAX, height: scroll_height });
+    {
+        if !state.ai_selection_preview.is_empty() {
+            ctx.block_begin("selection_preview");
+            ctx.label("selection_title", "Highlighted text:");
+            for (i, line) in state.ai_selection_preview.lines().take(100).enumerate() {
+                ctx.next_block_id_mixin(i as u64);
+                ctx.label("selection_line", line);
+            }
+            if preview_lines >= 100 && state.ai_selection_preview.lines().count() > 100 {
+                ctx.label("selection_truncated", "… (truncated)");
+            }
+            ctx.block_end();
+        }
+        
+        ctx.block_begin("history");
+        for (i, msg) in state.ai_messages.iter().enumerate() {
+            ctx.next_block_id_mixin(i as u64);
+            let prefix = if msg.role == "user" { "You: " } else { "AI: " };
+            ctx.label("msg", &format!("{}{}", prefix, msg.content));
+        }
+        ctx.block_end();
+    }
+    ctx.scrollarea_end();
+
+    ctx.table_begin("input_area");
+    ctx.table_next_row();
+    ctx.label("prompt_label", "Prompt: ");
+    
+    if state.ai_pending {
+        ctx.label("pending", "Thinking...");
+    } else {
+        ctx.editline("ai_input", &mut state.ai_input);
+        if state.ai_focus {
+            state.ai_focus = false;
+            ctx.steal_focus();
+        }
+        
+        if ctx.is_focused() && ctx.consume_shortcut(vk::RETURN) {
+             let prompt = state.ai_input.trim().to_string();
+             if !prompt.is_empty() {
+                 let mut content = String::new();
+                 if !state.ai_selection_preview.is_empty() {
+                     content.push_str("Context:\n");
+                     content.push_str(&state.ai_selection_preview);
+                     content.push_str("\n\n");
+                 }
+                 content.push_str(&prompt);
+
+                 state.ai_input.clear();
+                 state.ai_messages.push(ai::Message { role: "user".to_string(), content: content.clone() });
+                 state.ai_pending = true;
+                 
+                 let messages = state.ai_messages.clone();
+                 let (tx, rx) = std::sync::mpsc::channel();
+                 state.ai_response_rx = Some(rx);
+                 
+                 std::thread::spawn(move || {
+                     let result = ai::send_request(&messages);
+                     let _ = tx.send(result);
+                 });
+             }
+        }
+    }
+    ctx.table_end();
+
+    if ctx.button("close", "Close", ButtonStyle::default()) {
+        state.wants_ai_chat = false;
+    }
+
+    if ctx.modal_end() {
+        state.wants_ai_chat = false;
+    }
 }
