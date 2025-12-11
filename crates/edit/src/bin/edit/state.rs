@@ -6,6 +6,7 @@ use std::ffi::{OsStr, OsString};
 use std::mem;
 use std::path::{Path, PathBuf};
 
+use edit::buffer::{RcTextBuffer, TextBuffer};
 use edit::framebuffer::IndexedColor;
 use edit::helpers::*;
 use edit::oklab::StraightRgba;
@@ -176,7 +177,7 @@ pub struct State {
 
     pub wants_ai_chat: bool,
     pub ai_messages: Vec<Message>,
-    pub ai_input: String,
+    pub ai_input: RcTextBuffer,
     pub ai_selection_preview: String,
     pub ai_pending: bool,
     pub ai_focus: bool,
@@ -232,7 +233,7 @@ impl State {
 
             wants_ai_chat: false,
             ai_messages: Vec::new(),
-            ai_input: String::new(),
+            ai_input: TextBuffer::new_rc(true)?,
             ai_selection_preview: String::new(),
             ai_pending: false,
             ai_focus: false,

@@ -418,7 +418,12 @@ pub(crate) fn toggle_ai_chat_with_selection(state: &mut State) {
     }
 
     state.ai_focus = true;
-    state.ai_input.clear();
+    // Clear the input buffer
+    {
+        let mut buf = state.ai_input.borrow_mut();
+        buf.select_all();
+        buf.extract_selection(true);
+    }
     state.ai_selection_preview = selection.unwrap_or_default();
 }
 

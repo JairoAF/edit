@@ -424,21 +424,46 @@ pub fn draw_ai_chat(ctx: &mut Context, state: &mut State) {
     }
     ctx.scrollarea_end();
 
-    ctx.table_begin("input_area");
-    ctx.table_next_row();
-    ctx.label("prompt_label", "Prompt: ");
+    let input_height: CoordType = 6;
+    let modal_width: CoordType = 80;
+    
+    ctx.block_begin("input_area");
+    ctx.label("prompt_label", "Prompt (Ctrl+Enter to send):");
     
     if state.ai_pending {
         ctx.label("pending", "Thinking...");
     } else {
-        ctx.editline("ai_input", &mut state.ai_input);
+        let mut send = false;
+        
+        ctx.textarea("ai_input", state.ai_input.clone());
+        ctx.attr_intrinsic_size(Size { width: modal_width - 4, height: input_height });
         if state.ai_focus {
             state.ai_focus = false;
             ctx.steal_focus();
         }
         
-        if ctx.is_focused() && ctx.consume_shortcut(vk::RETURN) {
-             let prompt = state.ai_input.trim().to_string();
+        if ctx.contains_focus() && ctx.consume_shortcut(kbmod::CTRL | vk::RETURN) {
+            send = true;
+        }
+
+        ctx.table_begin("buttons");
+        ctx.table_set_cell_gap(Size { width: 2, height: 0 });
+        ctx.table_next_row();
+        if ctx.button("send", "Send", ButtonStyle::default()) {
+            send = true;
+        }
+        if ctx.button("close", "Close", ButtonStyle::default()) {
+            state.wants_ai_chat = false;
+        }
+        ctx.table_end();
+
+        if send {
+             let prompt = {
+                 let mut buf = state.ai_input.borrow_mut();
+                 buf.select_all();
+                 let text = buf.extract_selection(false);
+                 String::from_utf8_lossy(&text).trim().to_string()
+             };
              if !prompt.is_empty() {
                  let mut content = String::new();
                  if !state.ai_selection_preview.is_empty() {
@@ -448,7 +473,12 @@ pub fn draw_ai_chat(ctx: &mut Context, state: &mut State) {
                  }
                  content.push_str(&prompt);
 
-                 state.ai_input.clear();
+                 // Clear the input buffer
+                 {
+                     let mut buf = state.ai_input.borrow_mut();
+                     buf.select_all();
+                     buf.extract_selection(true); // delete the selection
+                 }
                  state.ai_messages.push(ai::Message { role: "user".to_string(), content: content.clone() });
                  state.ai_pending = true;
                  
@@ -463,11 +493,7 @@ pub fn draw_ai_chat(ctx: &mut Context, state: &mut State) {
              }
         }
     }
-    ctx.table_end();
-
-    if ctx.button("close", "Close", ButtonStyle::default()) {
-        state.wants_ai_chat = false;
-    }
+    ctx.block_end();
 
     if ctx.modal_end() {
         state.wants_ai_chat = false;
